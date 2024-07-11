@@ -5,16 +5,17 @@ using System.Drawing;
 using System.IO;
 using System.Text;
 using System.Reflection;
+using System.Management;
 
-using OpenHardwareMonitor.Hardware;
+//using OpenHardwareMonitor.Hardware;
 
 namespace TrayTemperature {
 	static class Program {
-		static int CPU = 0, GPU = 0, CPUMax = 0, GPUMax = 0, CPUMin = 99999, GPUMin = 99999;
+		static int CPU = 58, GPU = 0, CPUMax = 0, GPUMax = 0, CPUMin = 99999, GPUMin = 99999;
 		static ulong CPUAcc = 0, GPUAcc = 0, regCount = 0;
 		static bool isLogging = false;
 
-		static Computer computer = new Computer() { CPUEnabled = true, GPUEnabled = true };
+		//static Computer computer = new Computer() { CPUEnabled = true, GPUEnabled = true };
 		static Timer tmr;
 		static NotifyIcon ni;
 		static ContextMenu contextMenu;
@@ -28,7 +29,7 @@ namespace TrayTemperature {
 			Properties.Settings.Default.Upgrade();
 
 			//Inititalize OpenHardwareMonitorLib
-			computer.Open();
+			//computer.Open();
 
 			//Setup timer
 			tmr = new Timer {
@@ -222,22 +223,55 @@ namespace TrayTemperature {
 			tmr_tick(null, null);
 		}
 
+		static ManagementObjectSearcher searcher = new ManagementObjectSearcher(@"root\WMI", "SELECT * FROM MSAcpi_ThermalZoneTemperature");
+
+
 		//Updates the temperatures
 		private static void tmr_tick(object sender, EventArgs e) {
+            //Updates the sensors on each hardware part
+            //foreach (IHardware hardware in computer.Hardware) {
+            //	hardware.Update();
 
-			//Updates the sensors on each hardware part
-			foreach (IHardware hardware in computer.Hardware) {
-				hardware.Update();
+            //	//Get all temperature censors
+            //	ISensor sensor = hardware.Sensors.FirstOrDefault(d => d.SensorType == SensorType.Temperature);
 
-				//Get all temperature censors
-				ISensor sensor = hardware.Sensors.FirstOrDefault(d => d.SensorType == SensorType.Temperature);
+            //	if (sensor != null) {
+            //		if (hardware.HardwareType == HardwareType.CPU)
+            //			CPU = Convert.ToInt32(sensor.Value);
+            //		else
+            //			GPU = Convert.ToInt32(sensor.Value);
+            //	}
+            //}
+            CPU = 00;
+            //CPU --;
+            //if(false)
+            try {
+				// Create tmp variables to store values during the query
+				Double temperature = 0;
+				String instanceName = "";
 
-				if (sensor != null) {
-					if (hardware.HardwareType == HardwareType.CPU)
-						CPU = Convert.ToInt32(sensor.Value);
-					else
-						GPU = Convert.ToInt32(sensor.Value);
-				}
+				// Query the MSAcpi_ThermalZoneTemperature API
+				// Note: run your app or Visual Studio (while programming) or you will get "Access Denied"
+				
+
+				foreach (ManagementObject obj in searcher.Get()) {
+					temperature = Convert.ToDouble(obj["CurrentTemperature"].ToString());
+					// Convert the value to celsius degrees
+					temperature = (temperature - 2732) / 10.0;
+					instanceName = obj["InstanceName"].ToString();
+                    // Print the values e.g:
+
+                    //Console.WriteLine("temp::" + temperature + "," + instanceName);
+					//CPU = (int)temperature; break;
+					//CPU = Math.Max(CPU, (int)temperature);
+					CPU = (int)temperature;
+                    //obj.Delete();
+
+                    break;
+                }
+			}
+			catch (Exception ex) {
+				Console.WriteLine($"Error: {ex.Message}");
 			}
 
 			//Select appropriate color based on settings
@@ -260,7 +294,7 @@ namespace TrayTemperature {
 			//Unit conversion for loggin and displaying
 			int convertedCPU = Convert.ToInt32(Properties.Settings.Default.Celsius ? CPU : CPU * 1.8 + 32);
 			int convertedGPU = Convert.ToInt32(Properties.Settings.Default.Celsius ? GPU : GPU * 1.8 + 32);
-			string tempUnit = Properties.Settings.Default.Celsius ? "°C" : "°F";
+			//string tempUnit = Properties.Settings.Default.Celsius ? "°C" : "°F";
 
 			//Calculate statistics. CPUAcc and GPUAcc will eventually overflow after around 5.8 billion years with 1s updates, so I guess there's no worry there...
 			CPUAcc += (ulong)convertedCPU;
@@ -282,13 +316,15 @@ namespace TrayTemperature {
 
 			//Updates the tooltip with the little hacky function
 			StringBuilder sb = new StringBuilder();
-			sb.AppendLine($"CPU: Avg {(float)CPUAcc / regCount:F2}{tempUnit} Min: {CPUMin} Max: {CPUMax}");
-			sb.Append($"GPU: Avg {(float)GPUAcc / regCount:F2}{tempUnit} Min: {GPUMin} Max: {GPUMax}");
+			//sb.AppendLine($"CPU: Avg {(float)CPUAcc / regCount:F2}{tempUnit} Min: {CPUMin} Max: {CPUMax}");
+			//sb.Append($"GPU: Avg {(float)GPUAcc / regCount:F2}{tempUnit} Min: {GPUMin} Max: {GPUMax}");
+			
+			sb.Append($"{(float)CPUAcc / regCount:F2}");
 
 			SetNotifyIconText(ni, sb.ToString());
 
             //Updates the icon
-            Icon newIcon = DynamicIcon.CreateIcon(convertedCPU.ToString() + tempUnit, cpuColor, convertedGPU.ToString() + tempUnit, gpuColor);
+            Icon newIcon = DynamicIcon.CreateIcon(convertedCPU.ToString()/* + tempUnit*/, cpuColor, convertedGPU.ToString() /*+ tempUnit*/, gpuColor);
 			ni.Icon = newIcon;
             DynamicIcon.DestroyIcon(newIcon.Handle);
         }
